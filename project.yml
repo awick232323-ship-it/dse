@@ -1,0 +1,21 @@
+name: Wildberries
+options:
+  bundleIdPrefix: com.custom
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  Wildberries:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.custom.wbscreen
+        PRODUCT_NAME: Wildberries
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Sources/Info.plist
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
