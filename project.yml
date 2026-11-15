@@ -19,3 +19,5 @@ targets:
         INFOPLIST_FILE: Sources/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.0"
+        COMPRESS_PNG_FILES: NO
+        STRIP_PNG_TEXT: NO
