@@ -11,105 +11,132 @@ struct GameApp: App {
     }
 }
 
-// Структура персонажа
-struct Friend {
-    let name: String
-    let imageName: String
-    let color: Color
+protocol GameSceneDelegate: AnyObject {
+    func didUpdateScore(_ amount: Int)
+    func didLoseLife()
+}
+
+final class GameController: ObservableObject, GameSceneDelegate {
+    @Published var score = 0
+    @Published var lives = 3
+    @Published var isGameOver = false
+
+    let scene: GameScene
+
+    init() {
+        let newScene = GameScene()
+        newScene.size = CGSize(width: 414, height: 896)
+        newScene.scaleMode = .resizeFill
+        self.scene = newScene
+        newScene.gameDelegate = self
+    }
+
+    func jump() {
+        scene.jumpAll()
+    }
+
+    func restart() {
+        score = 0
+        lives = 3
+        isGameOver = false
+        scene.restartGame()
+    }
+
+    func didUpdateScore(_ amount: Int) {
+        DispatchQueue.main.async {
+            self.score = amount
+        }
+    }
+
+    func didLoseLife() {
+        DispatchQueue.main.async {
+            if self.lives > 1 {
+                self.lives -= 1
+            } else {
+                self.lives = 0
+                self.isGameOver = true
+                self.scene.isPaused = true
+            }
+        }
+    }
 }
 
 struct GameView: View {
-    @State private var score = 0
-    @State private var lives = 3
-    @State private var isGameOver = false
-    @State private var isGameStarted = false
-    
-    // Создаем игровую сцену SpriteKit
-    var scene: GameScene {
-        let scene = GameScene()
-        scene.size = CGSize(width: 414, height: 896)
-        scene.scaleMode = .resizeFill
-        scene.gameDelegate = self
-        return scene
-    }
-    
+    @StateObject private var controller = GameController()
+
     var body: some View {
         ZStack {
-            SpriteView(scene: scene)
+            SpriteView(scene: controller.scene)
                 .ignoresSafeArea()
-            
-            // Интерфейс игры поверх SpriteKit
+                .onTapGesture {
+                    if !controller.isGameOver {
+                        controller.jump()
+                    }
+                }
+
             VStack {
-                // Хедер
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("СЧЁТ: \(score)")
+                        Text("СЧЁТ: \(controller.score)")
                             .font(.system(.title2, design: .rounded).bold())
                             .foregroundColor(.white)
-                        
+
                         HStack(spacing: 4) {
-                            ForEach(0..<3) { index in
-                                Image(systemName: index < lives ? "heart.fill" : "heart")
+                            ForEach(0..<3, id: \.self) { index in
+                                Image(systemName: index < controller.lives ? "heart.fill" : "heart")
                                     .foregroundColor(.red)
                                     .font(.title3)
                             }
                         }
                     }
-                    
+
                     Spacer()
-                    
+
                     Text("ЗАБЕГ ДРУЗЕЙ")
                         .font(.system(.headline, design: .rounded).bold())
                         .foregroundColor(.yellow)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.4))
+                        .background(Color.black.opacity(0.45))
                         .cornerRadius(12)
                 }
                 .padding()
-                
+
                 Spacer()
-                
-                // Кнопки управления (только для примера, управление тапом)
-                HStack {
-                    Spacer()
-                    Button(action: {
-                        NotificationCenter.default.post(name: NSNotification.Name("JumpAction"), object: nil)
-                    }) {
-                        Text("ПРЫЖОК ↗")
-                            .font(.system(.title3, design: .rounded).bold())
-                            .foregroundColor(.white)
-                            .padding(.vertical, 20)
-                            .padding(.horizontal, 40)
-                            .background(Color.blue.opacity(0.85))
-                            .clipShape(Capsule())
-                            .shadow(radius: 5)
-                    }
-                    .padding(.bottom, 40)
-                    .padding(.trailing, 20)
+
+                Button(action: {
+                    controller.jump()
+                }) {
+                    Text("ПРЫЖОК ↗")
+                        .font(.system(.title3, design: .rounded).bold())
+                        .foregroundColor(.white)
+                        .padding(.vertical, 18)
+                        .padding(.horizontal, 44)
+                        .background(Color.blue.opacity(0.85))
+                        .clipShape(Capsule())
+                        .shadow(radius: 5)
                 }
+                .padding(.bottom, 36)
             }
-            
-            if isGameOver {
-                Color.black.opacity(0.8)
+
+            if controller.isGameOver {
+                Color.black.opacity(0.82)
                     .ignoresSafeArea()
                 VStack(spacing: 20) {
-                    Text("ИГРА ОКОНЧЕНА 👾")
+                    Text("ИГРА ОКОНЧЕНА")
                         .font(.system(.largeTitle, design: .rounded).bold())
                         .foregroundColor(.red)
-                    Text("Финальный счёт: \(score)")
+                    Text("Финальный счёт: \(controller.score)")
                         .font(.title2)
                         .foregroundColor(.white)
                     Button(action: {
-                        isGameOver = false
-                        score = 0
-                        lives = 3
-                        NotificationCenter.default.post(name: NSNotification.Name("RestartGame"), object: nil)
+                        controller.restart()
                     }) {
                         Text("ИГРАТЬ СНОВА")
                             .font(.headline)
                             .foregroundColor(.black)
-                            .padding()
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, 14)
                             .background(Color.yellow)
                             .cornerRadius(12)
                     }
@@ -119,187 +146,195 @@ struct GameView: View {
     }
 }
 
-// Делегат для связи SpriteKit сцены с UI SwiftUI
-extension GameView: GameSceneDelegate {
-    func didUpdateScore(_ amount: Int) {
-        self.score = amount
-    }
-    func didLoseLife() {
-        if self.lives > 1 {
-            self.lives -= 1
-        } else {
-            self.lives = 0
-            self.isGameOver = true
-        }
-    }
-}
-
-protocol GameSceneDelegate: AnyObject {
-    func didUpdateScore(_ amount: Int)
-    func didLoseLife()
-}
-
-// Сама игровая сцена
 class GameScene: SKScene, SKPhysicsContactDelegate {
     weak var gameDelegate: GameSceneDelegate?
-    
+
     private var players: [SKSpriteNode] = []
-    private var platforms: [SKSpriteNode] = []
     private var score = 0
-    
+
     private let playerCategory: UInt32 = 0x1 << 0
     private let platformCategory: UInt32 = 0x1 << 1
     private let obstacleCategory: UInt32 = 0x1 << 2
     private let coinCategory: UInt32 = 0x1 << 3
-    
+
     override func didMove(to view: SKView) {
+        if children.isEmpty {
+            setupScene()
+        }
+    }
+
+    private func setupScene() {
         physicsWorld.contactDelegate = self
-        physicsWorld.gravity = CGVector(dx: 0, dy: -9.8)
-        
+        physicsWorld.gravity = CGVector(dx: 0, dy: -14.0)
+        isPaused = false
+
         createBackground()
         createGround()
         spawnPlayers()
-        
-        // Подписка на прыжок
-        NotificationCenter.default.addObserver(self, selector: #selector(jumpAll), name: NSNotification.Name("JumpAction"), object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(restartGame), name: NSNotification.Name("RestartGame"), object: nil)
-        
         startLoop()
     }
-    
+
     func createBackground() {
-        let bg = SKSpriteNode(color: .darkGray, size: self.size)
-        bg.position = CGPoint(x: size.width/2, y: size.height/2)
+        let bg = SKSpriteNode(color: UIColor(red: 0.10, green: 0.11, blue: 0.18, alpha: 1.0), size: self.size)
+        bg.position = CGPoint(x: size.width / 2, y: size.height / 2)
         bg.zPosition = -10
         addChild(bg)
-        
-        // Маленький градиент/звезды
-        for _ in 0..<30 {
-            let star = SKShapeNode(circleOfRadius: CGFloat.random(in: 1...3))
+
+        for _ in 0..<35 {
+            let star = SKShapeNode(circleOfRadius: CGFloat.random(in: 1...2.5))
             star.fillColor = .white
             star.strokeColor = .clear
-            star.position = CGPoint(x: CGFloat.random(in: 0...size.width), y: CGFloat.random(in: size.height/2...size.height))
-            star.alpha = CGFloat.random(in: 0.3...1.0)
+            star.position = CGPoint(
+                x: CGFloat.random(in: 0...max(size.width, 414)),
+                y: CGFloat.random(in: 200...max(size.height, 896))
+            )
+            star.alpha = CGFloat.random(in: 0.3...0.9)
+            star.zPosition = -5
             addChild(star)
         }
     }
-    
+
     func createGround() {
-        let ground = SKSpriteNode(color: .green, size: CGSize(width: size.width * 2, height: 100))
-        ground.position = CGPoint(x: size.width/2, y: 50)
+        let ground = SKSpriteNode(color: UIColor(red: 0.18, green: 0.65, blue: 0.32, alpha: 1.0), size: CGSize(width: 2000, height: 110))
+        ground.position = CGPoint(x: 500, y: 55)
         ground.physicsBody = SKPhysicsBody(rectangleOf: ground.size)
         ground.physicsBody?.isDynamic = false
         ground.physicsBody?.categoryBitMask = platformCategory
-        ground.physicsBody?.contactTestBitMask = playerCategory
+        ground.physicsBody?.collisionBitMask = playerCategory
         ground.name = "ground"
         addChild(ground)
     }
-    
+
     func spawnPlayers() {
-        // У нас будет три друга, бегущих "паровозиком"
-        let positions = [
-            (name: "friend1", color: UIColor.blue, xOffset: CGFloat(100)),
-            (name: "friend2", color: UIColor.yellow, xOffset: CGFloat(150)),
-            (name: "friend3", color: UIColor.black, xOffset: CGFloat(200))
+        let configs: [(name: String, color: UIColor, xOffset: CGFloat)] = [
+            ("friend1", .systemBlue, 75),
+            ("friend2", .systemYellow, 135),
+            ("friend3", .systemPurple, 195)
         ]
-        
-        for p in positions {
-            // Тело
-            let body = SKSpriteNode(color: p.color, size: CGSize(width: 30, height: 50))
+
+        for (idx, p) in configs.enumerated() {
+            let body = SKSpriteNode(color: p.color, size: CGSize(width: 26, height: 42))
             body.position = CGPoint(x: p.xOffset, y: 150)
-            
-            // Если есть лицо, добавляем поверх, иначе забавный кружок
-            let face: SKSpriteNode
+
+            let leftLeg = SKSpriteNode(color: .white, size: CGSize(width: 7, height: 14))
+            leftLeg.position = CGPoint(x: -6, y: -24)
+            let rightLeg = SKSpriteNode(color: .lightGray, size: CGSize(width: 7, height: 14))
+            rightLeg.position = CGPoint(x: 6, y: -24)
+            body.addChild(leftLeg)
+            body.addChild(rightLeg)
+
+            let stepUp = SKAction.moveBy(x: 0, y: 5, duration: 0.14)
+            let stepDown = stepUp.reversed()
+            let delay = SKAction.wait(forDuration: Double(idx) * 0.05)
+            leftLeg.run(SKAction.sequence([delay, SKAction.repeatForever(SKAction.sequence([stepUp, stepDown]))]))
+            rightLeg.run(SKAction.sequence([delay, SKAction.repeatForever(SKAction.sequence([stepDown, stepUp]))]))
+
+            let cropNode = SKCropNode()
+            let mask = SKShapeNode(circleOfRadius: 20)
+            mask.fillColor = .white
+            cropNode.maskNode = mask
+            cropNode.position = CGPoint(x: 0, y: 38)
+
             if let img = UIImage(named: p.name) {
-                let texture = SKTexture(image: img)
-                face = SKSpriteNode(texture: texture, size: CGSize(width: 32, height: 32))
+                let head = SKSpriteNode(texture: SKTexture(image: img), size: CGSize(width: 40, height: 40))
+                cropNode.addChild(head)
             } else {
-                face = SKSpriteNode(color: .orange, size: CGSize(width: 32, height: 32))
+                let fallback = SKSpriteNode(color: .orange, size: CGSize(width: 40, height: 40))
+                cropNode.addChild(fallback)
             }
-            face.position = CGPoint(x: 0, y: 35)
-            body.addChild(face)
-            
+
+            let border = SKShapeNode(circleOfRadius: 20)
+            border.strokeColor = .white
+            border.lineWidth = 2
+            border.position = CGPoint(x: 0, y: 38)
+
+            body.addChild(cropNode)
+            body.addChild(border)
+
             body.physicsBody = SKPhysicsBody(rectangleOf: body.size)
             body.physicsBody?.allowsRotation = false
+            body.physicsBody?.restitution = 0
             body.physicsBody?.categoryBitMask = playerCategory
-            body.physicsBody?.contactTestBitMask = platformCategory | obstacleCategory | coinCategory
+            body.physicsBody?.collisionBitMask = platformCategory
+            body.physicsBody?.contactTestBitMask = obstacleCategory | coinCategory
             body.name = "player"
-            
+
             addChild(body)
             players.append(body)
         }
     }
-    
-    @objc func jumpAll() {
-        for player in players {
-            // Разрешаем прыжок только если игрок на земле (проверка скорости Y)
-            if let velocity = player.physicsBody?.velocity.dy, abs(velocity) < 0.1 {
-                player.physicsBody?.applyImpulse(CGVector(dx: 0, dy: 180))
+
+    func jumpAll() {
+        for (index, player) in players.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.07) {
+                if let velocity = player.physicsBody?.velocity.dy, abs(velocity) < 5.0 {
+                    player.physicsBody?.applyImpulse(CGVector(dx: 0, dy: 28))
+                }
             }
         }
     }
-    
-    @objc func restartGame() {
-        self.removeAllChildren()
+
+    func restartGame() {
+        removeAllActions()
+        removeAllChildren()
         players.removeAll()
         score = 0
-        createBackground()
-        createGround()
-        spawnPlayers()
-        startLoop()
+        setupScene()
     }
-    
+
     func startLoop() {
-        // Спавн препятствий и монет каждые 2 секунды
         let spawnAction = SKAction.run { [weak self] in
             self?.spawnObstacleAndCoins()
         }
-        let wait = SKAction.wait(forDuration: 2.0)
-        let sequence = SKAction.sequence([spawnAction, wait])
-        run(SKAction.repeatForever(sequence), withKey: "gameLoop")
+        let wait = SKAction.wait(forDuration: 1.7)
+        run(SKAction.repeatForever(SKAction.sequence([spawnAction, wait])), withKey: "gameLoop")
     }
-    
+
     func spawnObstacleAndCoins() {
-        guard let _ = players.first else { return }
-        
         let isObstacle = Bool.random()
-        let speed: CGFloat = 200.0
-        
+        let travelDistance = max(size.width, 414) + 120
+        let duration = Double(travelDistance / 240.0)
+
         if isObstacle {
-            // Спавн барьера
-            let barrier = SKSpriteNode(color: .red, size: CGSize(width: 25, height: 35))
-            barrier.position = CGPoint(x: size.width + 50, y: 110)
+            let barrier = SKSpriteNode(color: .systemRed, size: CGSize(width: 24, height: 34))
+            barrier.position = CGPoint(x: max(size.width, 414) + 40, y: 127)
             barrier.physicsBody = SKPhysicsBody(rectangleOf: barrier.size)
             barrier.physicsBody?.isDynamic = false
             barrier.physicsBody?.categoryBitMask = obstacleCategory
+            barrier.physicsBody?.collisionBitMask = 0
             barrier.physicsBody?.contactTestBitMask = playerCategory
             barrier.name = "obstacle"
             addChild(barrier)
-            
-            let move = SKAction.moveBy(x: -(size.width + 100), y: 0, duration: Double(size.width / speed))
-            let destroy = SKAction.removeFromParent()
-            barrier.run(SKAction.sequence([move, destroy]))
+
+            barrier.run(SKAction.sequence([
+                SKAction.moveBy(x: -travelDistance, y: 0, duration: duration),
+                SKAction.removeFromParent()
+            ]))
         } else {
-            // Спавн монетки
-            let coin = SKSpriteNode(color: .yellow, size: CGSize(width: 20, height: 20))
-            coin.position = CGPoint(x: size.width + 50, y: CGFloat.random(in: 140...220))
-            coin.physicsBody = SKPhysicsBody(circleOfRadius: 10)
+            let coin = SKShapeNode(circleOfRadius: 11)
+            coin.fillColor = .systemYellow
+            coin.strokeColor = .orange
+            coin.lineWidth = 2
+            coin.position = CGPoint(x: max(size.width, 414) + 40, y: CGFloat.random(in: 145...235))
+            coin.physicsBody = SKPhysicsBody(circleOfRadius: 11)
             coin.physicsBody?.isDynamic = false
             coin.physicsBody?.categoryBitMask = coinCategory
+            coin.physicsBody?.collisionBitMask = 0
             coin.physicsBody?.contactTestBitMask = playerCategory
             coin.name = "coin"
             addChild(coin)
-            
-            let move = SKAction.moveBy(x: -(size.width + 100), y: 0, duration: Double(size.width / speed))
-            let destroy = SKAction.removeFromParent()
-            coin.run(SKAction.sequence([move, destroy]))
+
+            coin.run(SKAction.sequence([
+                SKAction.moveBy(x: -travelDistance, y: 0, duration: duration),
+                SKAction.removeFromParent()
+            ]))
         }
     }
-    
+
     func didBegin(_ contact: SKPhysicsContact) {
-        var firstBody: SKPhysicsBody
-        var secondBody: SKPhysicsBody
-        
+        let firstBody: SKPhysicsBody
+        let secondBody: SKPhysicsBody
+
         if contact.bodyA.categoryBitMask < contact.bodyB.categoryBitMask {
             firstBody = contact.bodyA
             secondBody = contact.bodyB
@@ -307,18 +342,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             firstBody = contact.bodyB
             secondBody = contact.bodyA
         }
-        
-        // Контакт игрока с препятствием
+
         if firstBody.categoryBitMask == playerCategory && secondBody.categoryBitMask == obstacleCategory {
-            if let obstacle = secondBody.node {
+            if let obstacle = secondBody.node, obstacle.parent != nil {
                 obstacle.removeFromParent()
                 gameDelegate?.didLoseLife()
             }
-        }
-        
-        // Контакт игрока с монеткой
-        if firstBody.categoryBitMask == playerCategory && secondBody.categoryBitMask == coinCategory {
-            if let coin = secondBody.node {
+        } else if firstBody.categoryBitMask == playerCategory && secondBody.categoryBitMask == coinCategory {
+            if let coin = secondBody.node, coin.parent != nil {
                 coin.removeFromParent()
                 score += 10
                 gameDelegate?.didUpdateScore(score)
