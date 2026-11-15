@@ -1,5 +1,6 @@
 import SwiftUI
 import SpriteKit
+import Vision
 
 @main
 struct GameApp: App {
@@ -205,11 +206,63 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(ground)
     }
 
+    private func loadFriendFace(named name: String) -> UIImage? {
+        var rawImage: UIImage? = UIImage(named: name)
+        if rawImage == nil {
+            for ext in ["png", "jpg", "jpeg", "PNG", "JPG"] {
+                if let path = Bundle.main.path(forResource: name, ofType: ext),
+                   let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                   let img = UIImage(data: data) {
+                    rawImage = img
+                    break
+                }
+            }
+        }
+        guard let image = rawImage else { return nil }
+        return cropToFace(image: image)
+    }
+
+    private func cropToFace(image: UIImage) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: image.size)
+        let normalized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+        guard let cgImage = normalized.cgImage else { return image }
+
+        let w = CGFloat(cgImage.width)
+        let h = CGFloat(cgImage.height)
+
+        let request = VNDetectFaceRectanglesRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try? handler.perform([request])
+
+        let cropRect: CGRect
+        if let face = request.results?.first {
+            let box = face.boundingBox
+            let faceW = box.width * w
+            let faceH = box.height * h
+            let centerX = (box.minX + box.width / 2) * w
+            let centerY = (1.0 - (box.minY + box.height / 2)) * h
+            let side = min(max(faceW, faceH) * 1.45, min(w, h))
+            let originX = min(max(0, centerX - side / 2), w - side)
+            let originY = min(max(0, centerY - side / 2), h - side)
+            cropRect = CGRect(x: originX, y: originY, width: side, height: side)
+        } else {
+            let side = min(w, h)
+            cropRect = CGRect(x: (w - side) / 2, y: (h - side) / 2, width: side, height: side)
+        }
+
+        if let cropped = cgImage.cropping(to: cropRect) {
+            return UIImage(cgImage: cropped)
+        }
+        return normalized
+    }
+
     func spawnPlayers() {
         let configs: [(name: String, color: UIColor, xOffset: CGFloat)] = [
             ("friend1", .systemBlue, 75),
-            ("friend2", .systemYellow, 135),
-            ("friend3", .systemPurple, 195)
+            ("friend2", .systemYellow, 138),
+            ("friend3", .systemPurple, 201)
         ]
 
         for (idx, p) in configs.enumerated() {
@@ -229,24 +282,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             leftLeg.run(SKAction.sequence([delay, SKAction.repeatForever(SKAction.sequence([stepUp, stepDown]))]))
             rightLeg.run(SKAction.sequence([delay, SKAction.repeatForever(SKAction.sequence([stepDown, stepUp]))]))
 
+            let headRadius: CGFloat = 24
             let cropNode = SKCropNode()
-            let mask = SKShapeNode(circleOfRadius: 20)
+            let mask = SKShapeNode(circleOfRadius: headRadius)
             mask.fillColor = .white
             cropNode.maskNode = mask
-            cropNode.position = CGPoint(x: 0, y: 38)
+            cropNode.position = CGPoint(x: 0, y: 42)
 
-            if let img = UIImage(named: p.name) {
-                let head = SKSpriteNode(texture: SKTexture(image: img), size: CGSize(width: 40, height: 40))
+            if let faceImg = loadFriendFace(named: p.name) {
+                let head = SKSpriteNode(texture: SKTexture(image: faceImg), size: CGSize(width: headRadius * 2, height: headRadius * 2))
                 cropNode.addChild(head)
             } else {
-                let fallback = SKSpriteNode(color: .orange, size: CGSize(width: 40, height: 40))
+                let fallback = SKSpriteNode(color: .orange, size: CGSize(width: headRadius * 2, height: headRadius * 2))
                 cropNode.addChild(fallback)
             }
 
-            let border = SKShapeNode(circleOfRadius: 20)
+            let border = SKShapeNode(circleOfRadius: headRadius)
             border.strokeColor = .white
             border.lineWidth = 2
-            border.position = CGPoint(x: 0, y: 38)
+            border.position = CGPoint(x: 0, y: 42)
 
             body.addChild(cropNode)
             body.addChild(border)
